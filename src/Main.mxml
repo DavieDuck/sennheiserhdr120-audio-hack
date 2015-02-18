@@ -1,0 +1,231 @@
+<?xml version="1.0" encoding="utf-8"?> 
+<s:WindowedApplication xmlns:fx="http://ns.adobe.com/mxml/2009" 
+					   xmlns:s="library://ns.adobe.com/flex/spark" 
+					   xmlns:mx="library://ns.adobe.com/flex/mx" 
+					   title="Sennheiser Audio Hack"
+					   creationComplete="init()"> 
+
+	
+	<fx:Style> 
+			@namespace s "library://ns.adobe.com/flex/spark"; 
+			s|WindowedApplication 
+		{ 
+			
+			skinClass:ClassReference("spark.skins.spark.SparkChromeWindowedApplicationSkin"); 
+			background-color:#CFD1D0; 
+			background-alpha:"0.7"; 
+		}          
+	</fx:Style>
+	
+	
+
+	<mx:Canvas>
+		
+		<s:Label id="titleText" x="5" y="10" fontSize = "9"/>
+		<s:Label id="bodyText" x="5" y="68" fontSize = "9"/>
+		<s:Label id="micStatus" x="5" y="98" fontSize = "9"/>
+		<s:Label id="availableDevices" x="5" y="138" fontSize = "9"/>
+		<s:Label id="silence" x="5" y="178" color = "#ff0000" />
+		
+	</mx:Canvas>
+	
+	
+	
+	<fx:Script>
+		
+		<![CDATA[
+			
+			////////////////////////////////////////////////////////////////////////////////////////////////////
+			//D.Germishuys: "System Tray Functionality courtesy of: - http://www.swamicharan.com/blog/air/minimizing-an-air-app-to-systemtray"
+			///////////////////////////////////////////////////////////////////////////////////////////////////
+			
+			private var trayIcon:BitmapData;
+			
+			public function loadTrayIcon():void
+			{
+
+				var loader:Loader = new Loader();
+				loader.contentLoaderInfo.addEventListener(Event.COMPLETE, readyToTray);
+				loader.load(new URLRequest("assets/icon.PNG"));
+
+			}
+			
+			private function minToTray(event:Event):void{
+				event.preventDefault();
+				dock();
+			}
+			
+			private function winMinimized(displayStateEvent:NativeWindowDisplayStateEvent):void{
+				if(displayStateEvent.afterDisplayState == NativeWindowDisplayState.MINIMIZED){
+					displayStateEvent.preventDefault();
+					dock();
+				}
+			}
+			
+			public function dock():void{
+				stage.nativeWindow.visible = false;
+				NativeApplication.nativeApplication.icon.bitmaps = [trayIcon];
+			}
+			
+			public function unDock(event:Event):void{
+				stage.nativeWindow.visible = true;
+				stage.nativeWindow.orderToFront();
+				NativeApplication.nativeApplication.icon.bitmaps = [];
+			}
+
+			private function closeApp(event:Event):void{
+				71.
+				stage.nativeWindow.close();
+				72.
+			}
+			
+			
+			public function readyToTray(event:Event):void{
+				
+				trayIcon = event.target.content.bitmapData;
+				var myMenu:NativeMenu = new NativeMenu();
+				var openItem:NativeMenuItem = new NativeMenuItem("Open");
+				var closeItem:NativeMenuItem = new NativeMenuItem("Close");
+				
+				
+				openItem.addEventListener(Event.SELECT, unDock);
+				closeItem.addEventListener(Event.SELECT, closeApp);
+				
+				myMenu.addItem(openItem);
+				myMenu.addItem(new NativeMenuItem("", true));
+				myMenu.addItem(closeItem);
+
+				if(NativeApplication.supportsSystemTrayIcon){
+					
+					SystemTrayIcon(NativeApplication.nativeApplication.icon).tooltip = "Sennheiser Audio Hack";
+					SystemTrayIcon(NativeApplication.nativeApplication.icon).addEventListener(MouseEvent.CLICK, unDock);
+					stage.nativeWindow.addEventListener(NativeWindowDisplayStateEvent.DISPLAY_STATE_CHANGING, winMinimized);
+					SystemTrayIcon(NativeApplication.nativeApplication.icon).menu = myMenu;
+					
+				}
+				
+			}
+			
+			////////////////////////////////////////////////////////////////////////////////////////////////////	
+			
+			public function init():void {
+
+				
+				loadTrayIcon();
+				
+				titleText.text = "Detecting Audio Silence" + "\n" +
+					"-------------------------------------------------------------" + "\n" + 
+					" - Make sure: LineOut/LineIn cable running from microphone to audio output." + "\n" +
+					" - Make sure: Control Panel > Sound > Communications Tab > Select DO NOTHING" 
+					;
+				
+				
+				
+				
+				
+				bodyText.text = "Counter-Acting Sennheiser Radio Beacon Auto-Shut-Off Function" + "\n" + "Version 2.0";
+				micStatus.text = "";
+			
+				var silenceLevel:int = 1;
+				var cueTimer:Timer = new Timer(60000, 1);
+				var alert:Sound = new Sound();
+				var deviceArray:Array = Microphone.names; 
+				var mic:Microphone = Microphone.getMicrophone(); 
+				var micAdjust:SoundTransform = mic.soundTransform;
+				
+				alert.load(new URLRequest("assets/login.mp3"));
+				
+				
+				addEventListener(Event.CLOSING, minToTray);
+				mic.addEventListener(StatusEvent.STATUS, onMicStatus);
+				mic.addEventListener(ActivityEvent.ACTIVITY, onMicActivity);
+				cueTimer.addEventListener("timer", timerHandler);
+				
+				///////////////////////////////////////////////////////////////////////////////////////////////////////
+				
+				
+				for (var i:int = 0; i < deviceArray.length; i++) 
+				{ 
+					trace(" " + deviceArray[i]);
+					availableDevices.text = deviceArray[0];
+				}
+				
+				mic.gain = 60; 
+				mic.rate = 11; 
+				mic.setUseEchoSuppression(false); 
+				micAdjust.volume = 0;
+				mic.soundTransform = micAdjust;
+				mic.setLoopBack(true);
+				mic.setSilenceLevel( silenceLevel, 1000);
+				
+				
+				///////////////////////////////////////////////////////////////////////////////////////////////////
+				
+				function onMicStatus (e:StatusEvent):void{
+					
+					
+					if (e.code == "Microphone.Unmuted") 
+					{ 
+						micStatus.text  = "green";
+						micStatus.text = "Microphone Status Granted";
+						
+					}  
+					else if (e.code == "Microphone.Muted") 
+					{ 
+						
+						micStatus.text  = "red";
+						micStatus.text = "Microphone access was denied";
+					}
+					
+					micStatus.text = "status: level=" + e.level + ", code=" + e.code;
+					
+				}
+				
+				
+				//////////////////////////////////////////////////////////////////////////////////////////////////
+				
+				function onMicActivity (e:ActivityEvent):void {
+					
+					micStatus.text = "activating = "  + e.activating  + "\n" +  "activityLevel = " +  
+						mic.activityLevel;
+					
+					
+					if (mic.activityLevel >= silenceLevel){
+						
+						//silence.textColor = 0x139803;
+						silence.text = "ACTIVE";
+						
+						if (cueTimer.running){
+							cueTimer.stop();
+						}
+						
+					} else if (mic.activityLevel < silenceLevel) {
+						
+						//silence.textColor = 0xff0000; 
+						silence.text = "SILENT";
+						cueTimer.start();
+					}
+					
+					trace("activating=" + e.activating + ", activityLevel=" +  
+						mic.activityLevel);
+					
+				}
+				
+				
+				//////////////////////////////////////////////////////////////////////////////////////////////////
+
+				
+				function timerHandler(e:TimerEvent):void {
+					
+					alert.play();
+					silence.text = "SILENT" + "\n" + "----AUDIO CUE SUCCESSFUL----";
+				}
+				
+				
+				///////////////////////////////////////////////////////////////////////////////////////////////////////////
+			}
+		]]>
+	</fx:Script>
+
+
+</s:WindowedApplication>
